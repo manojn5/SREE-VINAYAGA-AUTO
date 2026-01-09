@@ -3,13 +3,13 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Object ID Pro — Camera + Instance Match</title>
+<title>SREE-VINAYAGA-AUTO</title>
 
 <style>
 body{margin:0;padding:24px;background:#0f1724;color:#e6eef6;font-family:system-ui}
 .container{display:grid;grid-template-columns:420px 1fr;gap:20px}
 .card{background:#0b1220;padding:16px;border-radius:12px}
-input,button{width:100%;padding:10px;margin-top:6px;border-radius:8px;border:none}
+input,button,select{width:100%;padding:10px;margin-top:6px;border-radius:8px;border:none}
 button{background:#06b6d4;font-weight:700;cursor:pointer}
 button.ghost{background:transparent;color:#94a3b8;border:1px solid #1e293b}
 .list{margin-top:10px;display:grid;gap:8px}
@@ -32,6 +32,12 @@ video{width:100%;border-radius:10px;margin-top:8px}
 <h3>Register Object</h3>
 
 <input type="file" id="addFile" accept="image/*">
+
+<select id="cameraSelect">
+  <option value="environment">📷 Back Camera (Recommended)</option>
+  <option value="user">🤳 Front Camera</option>
+</select>
+
 <button class="ghost" id="camAddBtn">📷 Camera Register</button>
 
 <input id="serial" placeholder="Serial">
@@ -48,6 +54,11 @@ video{width:100%;border-radius:10px;margin-top:8px}
 
 <input type="file" id="scanFile" accept="image/*">
 <button id="scanBtn">🔍 Scan Image</button>
+
+<select id="cameraSelectScan">
+  <option value="environment">📷 Back Camera (Recommended)</option>
+  <option value="user">🤳 Front Camera</option>
+</select>
 
 <button class="ghost" id="camScanBtn">📸 Camera Scan</button>
 
@@ -73,14 +84,10 @@ class Hasher{
 static async multi(img){
   const sizes=[32,48,64], out=[];
   for(const s of sizes){
-    out.push({
-      hash:this.hash(img,s),
-      color:this.color(img,s)
-    });
+    out.push({ hash:this.hash(img,s), color:this.color(img,s) });
   }
   return out;
 }
-
 static hash(img,size){
   const c=document.createElement("canvas");
   c.width=c.height=size;
@@ -88,15 +95,13 @@ static hash(img,size){
   x.drawImage(img,0,0,size,size);
   const d=x.getImageData(0,0,size,size).data;
   let g=[];
-  for(let i=0;i<d.length;i+=4)
-    g.push((d[i]+d[i+1]+d[i+2])/3);
+  for(let i=0;i<d.length;i+=4) g.push((d[i]+d[i+1]+d[i+2])/3);
   let bits=[];
   for(let y=0;y<size;y++)
     for(let x1=0;x1<size-1;x1++)
       bits.push(g[y*size+x1]>g[y*size+x1+1]?1:0);
   return bits.slice(0,64).join("");
 }
-
 static color(img,size){
   const c=document.createElement("canvas");
   c.width=c.height=size;
@@ -107,7 +112,6 @@ static color(img,size){
   for(let i=0;i<d.length;i+=4){r+=d[i];g+=d[i+1];b+=d[i+2]}
   return[r/(size*size),g/(size*size),b/(size*size)];
 }
-
 static edgeDensity(img){
   const s=64,c=document.createElement("canvas");
   c.width=c.height=s;
@@ -123,7 +127,7 @@ static edgeDensity(img){
 }
 }
 
-/* ===== DISTANCE (INSTANCE LEVEL) ===== */
+/* ===== DISTANCE ===== */
 function dist(q,s,qe,qr,se,sr){
   let sum=0;
   for(let i=0;i<q.length;i++){
@@ -134,9 +138,7 @@ function dist(q,s,qe,qr,se,sr){
             Math.abs(q[i].color[2]-s[i].color[2]);
     sum+=h+c*0.06;
   }
-  const edgePenalty=Math.abs(qe-se)*40;
-  const ratioPenalty=Math.abs(qr-sr)*10;
-  return sum/q.length+edgePenalty+ratioPenalty;
+  return sum/q.length + Math.abs(qe-se)*40 + Math.abs(qr-sr)*10;
 }
 
 /* ===== UI ===== */
@@ -156,93 +158,68 @@ function render(){
 }
 render();
 
-/* ===== REGISTER FILE ===== */
+/* ===== CAMERA START ===== */
+async function startCamera(mode){
+  if(stream) stream.getTracks().forEach(t=>t.stop());
+  stream = await navigator.mediaDevices.getUserMedia({
+    video:{ facingMode: mode }
+  });
+  video.srcObject = stream;
+  video.style.display = snapBtn.style.display = "block";
+}
+
+/* ===== REGISTER ===== */
 addBtn.onclick=async()=>{
   if(!addFile.files[0])return;
-  const url=await read(addFile.files[0]);
-  await register(url);
+  register(await read(addFile.files[0]));
 };
 
-/* ===== CAMERA REGISTER ===== */
-camAddBtn.onclick=async()=>{
-  video.style.display=snapBtn.style.display="block";
-  stream=await navigator.mediaDevices.getUserMedia({video:true});
-  video.srcObject=stream;
+camAddBtn.onclick=()=>startCamera(cameraSelect.value);
 
-  snapBtn.onclick=async()=>{
-    const c=document.createElement("canvas");
-    c.width=video.videoWidth;
-    c.height=video.videoHeight;
-    c.getContext("2d").drawImage(video,0,0);
-    stream.getTracks().forEach(t=>t.stop());
-    video.style.display=snapBtn.style.display="none";
-    await register(c.toDataURL("image/jpeg",0.95));
-  };
+snapBtn.onclick=async()=>{
+  const c=document.createElement("canvas");
+  c.width=video.videoWidth;
+  c.height=video.videoHeight;
+  c.getContext("2d").drawImage(video,0,0);
+  stream.getTracks().forEach(t=>t.stop());
+  video.style.display=snapBtn.style.display="none";
+  register(c.toDataURL("image/jpeg",0.95));
 };
 
 async function register(url){
   const img=new Image(); img.src=url; await img.decode();
-  const hashes=await Hasher.multi(img);
-  const edges=Hasher.edgeDensity(img);
-  const ratio=img.width/img.height;
-  const db=load();
-  db.push({
+  load().push({
     id:Date.now(),
     serial:serial.value,
     place:place.value,
     img:url,
-    hashes,
-    edges,
-    ratio
+    hashes:await Hasher.multi(img),
+    edges:Hasher.edgeDensity(img),
+    ratio:img.width/img.height
   });
-  save(db); render();
-  alert("Object registered");
+  save(load()); render(); alert("Object registered");
 }
 
 /* ===== SCAN ===== */
 scanBtn.onclick=()=>scan(scanFile.files[0]);
-
-camScanBtn.onclick=async()=>{
-  video.style.display=snapBtn.style.display="block";
-  stream=await navigator.mediaDevices.getUserMedia({video:true});
-  video.srcObject=stream;
-
-  snapBtn.onclick=async()=>{
-    const c=document.createElement("canvas");
-    c.width=video.videoWidth;
-    c.height=video.videoHeight;
-    c.getContext("2d").drawImage(video,0,0);
-    stream.getTracks().forEach(t=>t.stop());
-    video.style.display=snapBtn.style.display="none";
-    scan(await fetch(c.toDataURL()).then(r=>r.blob()));
-  };
-};
+camScanBtn.onclick=()=>startCamera(cameraSelectScan.value);
 
 async function scan(file){
   if(!file)return;
   const url=await read(file);
   const img=new Image(); img.src=url; await img.decode();
 
-  const qHashes=await Hasher.multi(img);
-  const qEdges=Hasher.edgeDensity(img);
-  const qRatio=img.width/img.height;
-
   let best={d:1e9,o:null};
   for(const o of load()){
-    const d=dist(qHashes,o.hashes,qEdges,qRatio,o.edges,o.ratio);
+    const d=dist(await Hasher.multi(img),o.hashes,
+      Hasher.edgeDensity(img),img.width/img.height,o.edges,o.ratio);
     if(d<best.d) best={d,o};
   }
 
   result.style.display="block";
-  if(best.o && best.d<15){
-    const conf=best.d<8?"high":best.d<12?"medium":"low";
-    result.innerHTML=`✅ MATCH (${conf.toUpperCase()})<br>
-    Serial: ${best.o.serial}<br>
-    Place: ${best.o.place}<br>
-    Score: ${best.d.toFixed(1)}`;
-  }else{
-    result.innerHTML="❌ No matching object found";
-  }
+  result.innerHTML = best.o && best.d<15
+    ? `MATCH<br>Serial: ${best.o.serial}<br>Place: ${best.o.place}<br>Score: ${best.d.toFixed(1)}`
+    : " No matching object found";
 }
 </script>
 </body>
