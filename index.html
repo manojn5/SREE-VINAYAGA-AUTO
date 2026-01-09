@@ -53,17 +53,17 @@ video{width:100%;border-radius:10px;margin-top:8px}
 <h3>Scan Object</h3>
 
 <input type="file" id="scanFile" accept="image/*">
-<button id="scanBtn">🔍 Scan Image</button>
+<button id="scanBtn"> Scan Image</button>
 
 <select id="cameraSelectScan">
-  <option value="environment">📷 Back Camera (Recommended)</option>
-  <option value="user">🤳 Front Camera</option>
+  <option value="environment"> Back Camera (Recommended)</option>
+  <option value="user"> Front Camera</option>
 </select>
 
-<button class="ghost" id="camScanBtn">📸 Camera Scan</button>
+<button class="ghost" id="camScanBtn"> Camera Scan</button>
 
 <video id="video" autoplay playsinline style="display:none"></video>
-<button id="snapBtn" style="display:none">📸 Capture</button>
+<button id="snapBtn" style="display:none"> Capture</button>
 
 <div class="result" id="result" style="display:none"></div>
 </div>
@@ -224,4 +224,5 @@ async function scan(file){
 </script>
 </body>
 </html>
+
 
