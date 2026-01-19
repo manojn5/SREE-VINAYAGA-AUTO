@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Object ID Pro — GitHub Safe</title>
+<title>Object ID Pro </title>
 
 <style>
 body{margin:0;padding:24px;background:#0f1724;color:#e6eef6;font-family:system-ui}
@@ -13,17 +13,33 @@ input,button{width:100%;padding:10px;margin-top:6px;border-radius:8px;border:non
 button{background:#06b6d4;font-weight:700;cursor:pointer}
 button.ghost{background:transparent;color:#94a3b8;border:1px solid #1e293b}
 .list{margin-top:10px;display:grid;gap:8px}
-.item{display:flex;gap:8px;background:#111827;padding:6px;border-radius:8px}
+.item{
+  display:flex;
+  gap:8px;
+  background:#111827;
+  padding:6px;
+  border-radius:8px;
+  align-items:center
+}
 .item img{width:60px;height:45px;object-fit:cover;border-radius:6px}
+.del{
+  margin-left:auto;
+  background:#7f1d1d;
+  color:#fff;
+  border-radius:6px;
+  padding:4px 8px;
+  cursor:pointer
+}
 video{width:100%;border-radius:10px;margin-top:8px}
 .result{margin-top:10px;padding:10px;border-radius:10px;background:#022c22}
+.cam-row{display:flex;gap:6px}
 @media(max-width:900px){.container{grid-template-columns:1fr}}
 </style>
 </head>
 
 <body>
 
-<h2>Object ID Pro — IndexedDB Storage</h2>
+<h2>SREE-VINAYAGA-AUTO</h2>
 
 <div class="container">
 
@@ -32,7 +48,11 @@ video{width:100%;border-radius:10px;margin-top:8px}
 <h3>Register Object</h3>
 
 <input type="file" id="addFile" accept="image/*">
-<button class="ghost" id="camAddBtn">📷 Camera Register</button>
+
+<div class="cam-row">
+  <button class="ghost" id="camAddBtn"> Camera</button>
+  <button class="ghost" id="switchCamBtn">Switch</button>
+</div>
 
 <input id="serial" placeholder="Serial">
 <input id="place" placeholder="Place">
@@ -47,12 +67,15 @@ video{width:100%;border-radius:10px;margin-top:8px}
 <h3>Scan Object</h3>
 
 <input type="file" id="scanFile" accept="image/*">
-<button id="scanBtn">🔍 Scan Image</button>
+<button id="scanBtn">Scan Image</button>
 
-<button class="ghost" id="camScanBtn">📸 Camera Scan</button>
+<div class="cam-row">
+  <button class="ghost" id="camScanBtn"> Camera Scan</button>
+  <button class="ghost" id="switchCamBtn2"> Switch</button>
+</div>
 
 <video id="video" autoplay playsinline style="display:none"></video>
-<button id="snapBtn" style="display:none">📸 Capture</button>
+<button id="snapBtn" style="display:none">Capture</button>
 
 <div class="result" id="result" style="display:none"></div>
 </div>
@@ -65,6 +88,7 @@ const META_KEY="object-meta-v1";
 const DB_NAME="ObjectIDFiles";
 const STORE="images";
 let stream;
+let facingMode="environment"; // back camera default
 
 function openDB(){
   return new Promise(res=>{
@@ -82,13 +106,20 @@ async function saveImage(blob){
   return id;
 }
 
+async function deleteImage(id){
+  const db=await openDB();
+  const tx=db.transaction(STORE,"readwrite");
+  tx.objectStore(STORE).delete(id);
+}
+
 async function loadImage(id){
   const db=await openDB();
-  const tx=db.transaction(STORE,"readonly");
   return new Promise(res=>{
-    tx.objectStore(STORE).get(id).onsuccess=e=>{
-      res(URL.createObjectURL(e.target.result.blob));
-    };
+    db.transaction(STORE)
+      .objectStore(STORE)
+      .get(id).onsuccess=e=>{
+        res(URL.createObjectURL(e.target.result.blob));
+      };
   });
 }
 
@@ -175,11 +206,41 @@ async function render(){
     list.innerHTML+=`
       <div class="item">
         <img src="${src}">
-        <div><b>${o.serial}</b><br><small>${o.place}</small></div>
+        <div>
+          <b>${o.serial}</b><br>
+          <small>${o.place}</small>
+        </div>
+        <div class="del" onclick="removeItem(${o.id},${o.imgId})">🗑️</div>
       </div>`;
   }
 }
+
+async function removeItem(id,imgId){
+  if(!confirm("Delete this object?")) return;
+  await deleteImage(imgId);
+  saveMeta(loadMeta().filter(o=>o.id!==id));
+  render();
+}
 render();
+
+/* ================= CAMERA ================= */
+async function startCamera(){
+  video.style.display=snapBtn.style.display="block";
+  stream=await navigator.mediaDevices.getUserMedia({
+    video:{facingMode}
+  });
+  video.srcObject=stream;
+}
+
+function stopCamera(){
+  if(stream) stream.getTracks().forEach(t=>t.stop());
+  video.style.display=snapBtn.style.display="none";
+}
+
+switchCamBtn.onclick=switchCamBtn2.onclick=()=>{
+  facingMode=facingMode==="user"?"environment":"user";
+  if(stream){ stopCamera(); startCamera(); }
+};
 
 /* ================= REGISTER ================= */
 addBtn.onclick=async()=>{
@@ -188,16 +249,13 @@ addBtn.onclick=async()=>{
 };
 
 camAddBtn.onclick=async()=>{
-  video.style.display=snapBtn.style.display="block";
-  stream=await navigator.mediaDevices.getUserMedia({video:true});
-  video.srcObject=stream;
+  await startCamera();
   snapBtn.onclick=async()=>{
     const c=document.createElement("canvas");
     c.width=video.videoWidth;
     c.height=video.videoHeight;
     c.getContext("2d").drawImage(video,0,0);
-    stream.getTracks().forEach(t=>t.stop());
-    video.style.display=snapBtn.style.display="none";
+    stopCamera();
     register(c.toDataURL("image/jpeg",0.95));
   };
 };
@@ -226,16 +284,13 @@ async function register(url){
 scanBtn.onclick=()=>scan(scanFile.files[0]);
 
 camScanBtn.onclick=async()=>{
-  video.style.display=snapBtn.style.display="block";
-  stream=await navigator.mediaDevices.getUserMedia({video:true});
-  video.srcObject=stream;
+  await startCamera();
   snapBtn.onclick=async()=>{
     const c=document.createElement("canvas");
     c.width=video.videoWidth;
     c.height=video.videoHeight;
     c.getContext("2d").drawImage(video,0,0);
-    stream.getTracks().forEach(t=>t.stop());
-    video.style.display=snapBtn.style.display="none";
+    stopCamera();
     scan(await fetch(c.toDataURL()).then(r=>r.blob()));
   };
 };
@@ -258,7 +313,7 @@ async function scan(file){
   result.style.display="block";
   result.innerHTML=best.o && best.d<15
     ? ` MATCH<br>Serial: ${best.o.serial}<br>Place: ${best.o.place}<br>Score: ${best.d.toFixed(1)}`
-    : "No match found";
+    : " No match found";
 }
 </script>
 </body>
