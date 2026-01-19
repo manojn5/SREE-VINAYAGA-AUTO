@@ -3,13 +3,13 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>SREE-VINAYAGA-AUTO</title>
+<title>Object ID Pro — GitHub Safe</title>
 
 <style>
 body{margin:0;padding:24px;background:#0f1724;color:#e6eef6;font-family:system-ui}
 .container{display:grid;grid-template-columns:420px 1fr;gap:20px}
 .card{background:#0b1220;padding:16px;border-radius:12px}
-input,button,select{width:100%;padding:10px;margin-top:6px;border-radius:8px;border:none}
+input,button{width:100%;padding:10px;margin-top:6px;border-radius:8px;border:none}
 button{background:#06b6d4;font-weight:700;cursor:pointer}
 button.ghost{background:transparent;color:#94a3b8;border:1px solid #1e293b}
 .list{margin-top:10px;display:grid;gap:8px}
@@ -17,13 +17,13 @@ button.ghost{background:transparent;color:#94a3b8;border:1px solid #1e293b}
 .item img{width:60px;height:45px;object-fit:cover;border-radius:6px}
 video{width:100%;border-radius:10px;margin-top:8px}
 .result{margin-top:10px;padding:10px;border-radius:10px;background:#022c22}
-.high{color:#10b981}.medium{color:#f59e0b}.low{color:#ef4444}
 @media(max-width:900px){.container{grid-template-columns:1fr}}
 </style>
 </head>
 
 <body>
-<h2>SREE-VINAYAGA-AUTO</h2>
+
+<h2>Object ID Pro — IndexedDB Storage</h2>
 
 <div class="container">
 
@@ -32,12 +32,6 @@ video{width:100%;border-radius:10px;margin-top:8px}
 <h3>Register Object</h3>
 
 <input type="file" id="addFile" accept="image/*">
-
-<select id="cameraSelect">
-  <option value="environment">📷 Back Camera (Recommended)</option>
-  <option value="user">🤳 Front Camera</option>
-</select>
-
 <button class="ghost" id="camAddBtn">📷 Camera Register</button>
 
 <input id="serial" placeholder="Serial">
@@ -53,17 +47,12 @@ video{width:100%;border-radius:10px;margin-top:8px}
 <h3>Scan Object</h3>
 
 <input type="file" id="scanFile" accept="image/*">
-<button id="scanBtn"> Scan Image</button>
+<button id="scanBtn">🔍 Scan Image</button>
 
-<select id="cameraSelectScan">
-  <option value="environment"> Back Camera (Recommended)</option>
-  <option value="user"> Front Camera</option>
-</select>
-
-<button class="ghost" id="camScanBtn"> Camera Scan</button>
+<button class="ghost" id="camScanBtn">📸 Camera Scan</button>
 
 <video id="video" autoplay playsinline style="display:none"></video>
-<button id="snapBtn" style="display:none"> Capture</button>
+<button id="snapBtn" style="display:none">📸 Capture</button>
 
 <div class="result" id="result" style="display:none"></div>
 </div>
@@ -71,63 +60,95 @@ video{width:100%;border-radius:10px;margin-top:8px}
 </div>
 
 <script>
-const DBKEY="object-id-instance-v1";
+/* ================= DATABASE ================= */
+const META_KEY="object-meta-v1";
+const DB_NAME="ObjectIDFiles";
+const STORE="images";
 let stream;
 
-/* ===== UTIL ===== */
-const load=()=>JSON.parse(localStorage.getItem(DBKEY)||"[]");
-const save=d=>localStorage.setItem(DBKEY,JSON.stringify(d));
-const read=f=>new Promise(r=>{const fr=new FileReader();fr.onload=e=>r(e.target.result);fr.readAsDataURL(f)});
+function openDB(){
+  return new Promise(res=>{
+    const req=indexedDB.open(DB_NAME,1);
+    req.onupgradeneeded=e=>e.target.result.createObjectStore(STORE,{keyPath:"id"});
+    req.onsuccess=()=>res(req.result);
+  });
+}
 
-/* ===== HASH ENGINE ===== */
+async function saveImage(blob){
+  const db=await openDB();
+  const id=Date.now()+Math.random();
+  const tx=db.transaction(STORE,"readwrite");
+  tx.objectStore(STORE).put({id,blob});
+  return id;
+}
+
+async function loadImage(id){
+  const db=await openDB();
+  const tx=db.transaction(STORE,"readonly");
+  return new Promise(res=>{
+    tx.objectStore(STORE).get(id).onsuccess=e=>{
+      res(URL.createObjectURL(e.target.result.blob));
+    };
+  });
+}
+
+const loadMeta=()=>JSON.parse(localStorage.getItem(META_KEY)||"[]");
+const saveMeta=d=>localStorage.setItem(META_KEY,JSON.stringify(d));
+
+const read=f=>new Promise(r=>{
+  const fr=new FileReader();
+  fr.onload=e=>r(e.target.result);
+  fr.readAsDataURL(f);
+});
+
+/* ================= HASH ENGINE ================= */
 class Hasher{
-static async multi(img){
-  const sizes=[32,48,64], out=[];
-  for(const s of sizes){
-    out.push({ hash:this.hash(img,s), color:this.color(img,s) });
+  static async multi(img){
+    const sizes=[32,48,64],out=[];
+    for(const s of sizes)
+      out.push({hash:this.hash(img,s),color:this.color(img,s)});
+    return out;
   }
-  return out;
-}
-static hash(img,size){
-  const c=document.createElement("canvas");
-  c.width=c.height=size;
-  const x=c.getContext("2d");
-  x.drawImage(img,0,0,size,size);
-  const d=x.getImageData(0,0,size,size).data;
-  let g=[];
-  for(let i=0;i<d.length;i+=4) g.push((d[i]+d[i+1]+d[i+2])/3);
-  let bits=[];
-  for(let y=0;y<size;y++)
-    for(let x1=0;x1<size-1;x1++)
-      bits.push(g[y*size+x1]>g[y*size+x1+1]?1:0);
-  return bits.slice(0,64).join("");
-}
-static color(img,size){
-  const c=document.createElement("canvas");
-  c.width=c.height=size;
-  const x=c.getContext("2d");
-  x.drawImage(img,0,0,size,size);
-  const d=x.getImageData(0,0,size,size).data;
-  let r=0,g=0,b=0;
-  for(let i=0;i<d.length;i+=4){r+=d[i];g+=d[i+1];b+=d[i+2]}
-  return[r/(size*size),g/(size*size),b/(size*size)];
-}
-static edgeDensity(img){
-  const s=64,c=document.createElement("canvas");
-  c.width=c.height=s;
-  const x=c.getContext("2d");
-  x.drawImage(img,0,0,s,s);
-  const d=x.getImageData(0,0,s,s).data;
-  let e=0;
-  for(let i=0;i<d.length;i+=4){
-    const g=(d[i]+d[i+1]+d[i+2])/3;
-    if(g<60||g>200) e++;
+  static hash(img,size){
+    const c=document.createElement("canvas");
+    c.width=c.height=size;
+    const x=c.getContext("2d");
+    x.drawImage(img,0,0,size,size);
+    const d=x.getImageData(0,0,size,size).data;
+    let g=[];
+    for(let i=0;i<d.length;i+=4)
+      g.push((d[i]+d[i+1]+d[i+2])/3);
+    let bits=[];
+    for(let y=0;y<size;y++)
+      for(let x1=0;x1<size-1;x1++)
+        bits.push(g[y*size+x1]>g[y*size+x1+1]?1:0);
+    return bits.slice(0,64).join("");
   }
-  return e/(s*s);
-}
+  static color(img,size){
+    const c=document.createElement("canvas");
+    c.width=c.height=size;
+    const x=c.getContext("2d");
+    x.drawImage(img,0,0,size,size);
+    const d=x.getImageData(0,0,size,size).data;
+    let r=0,g=0,b=0;
+    for(let i=0;i<d.length;i+=4){r+=d[i];g+=d[i+1];b+=d[i+2]}
+    return[r/(size*size),g/(size*size),b/(size*size)];
+  }
+  static edgeDensity(img){
+    const s=64,c=document.createElement("canvas");
+    c.width=c.height=s;
+    const x=c.getContext("2d");
+    x.drawImage(img,0,0,s,s);
+    const d=x.getImageData(0,0,s,s).data;
+    let e=0;
+    for(let i=0;i<d.length;i+=4){
+      const g=(d[i]+d[i+1]+d[i+2])/3;
+      if(g<60||g>200) e++;
+    }
+    return e/(s*s);
+  }
 }
 
-/* ===== DISTANCE ===== */
 function dist(q,s,qe,qr,se,sr){
   let sum=0;
   for(let i=0;i<q.length;i++){
@@ -141,88 +162,104 @@ function dist(q,s,qe,qr,se,sr){
   return sum/q.length + Math.abs(qe-se)*40 + Math.abs(qr-sr)*10;
 }
 
-/* ===== UI ===== */
+/* ================= UI ================= */
 const list=document.getElementById("list");
-function render(){
+const result=document.getElementById("result");
+const video=document.getElementById("video");
+const snapBtn=document.getElementById("snapBtn");
+
+async function render(){
   list.innerHTML="";
-  load().forEach(o=>{
+  for(const o of loadMeta()){
+    const src=await loadImage(o.imgId);
     list.innerHTML+=`
-    <div class="item">
-      <img src="${o.img}">
-      <div>
-        <b>${o.serial||"N/A"}</b><br>
-        <small>${o.place||""}</small>
-      </div>
-    </div>`;
-  });
+      <div class="item">
+        <img src="${src}">
+        <div><b>${o.serial}</b><br><small>${o.place}</small></div>
+      </div>`;
+  }
 }
 render();
 
-/* ===== CAMERA START ===== */
-async function startCamera(mode){
-  if(stream) stream.getTracks().forEach(t=>t.stop());
-  stream = await navigator.mediaDevices.getUserMedia({
-    video:{ facingMode: mode }
-  });
-  video.srcObject = stream;
-  video.style.display = snapBtn.style.display = "block";
-}
-
-/* ===== REGISTER ===== */
+/* ================= REGISTER ================= */
 addBtn.onclick=async()=>{
   if(!addFile.files[0])return;
   register(await read(addFile.files[0]));
 };
 
-camAddBtn.onclick=()=>startCamera(cameraSelect.value);
-
-snapBtn.onclick=async()=>{
-  const c=document.createElement("canvas");
-  c.width=video.videoWidth;
-  c.height=video.videoHeight;
-  c.getContext("2d").drawImage(video,0,0);
-  stream.getTracks().forEach(t=>t.stop());
-  video.style.display=snapBtn.style.display="none";
-  register(c.toDataURL("image/jpeg",0.95));
+camAddBtn.onclick=async()=>{
+  video.style.display=snapBtn.style.display="block";
+  stream=await navigator.mediaDevices.getUserMedia({video:true});
+  video.srcObject=stream;
+  snapBtn.onclick=async()=>{
+    const c=document.createElement("canvas");
+    c.width=video.videoWidth;
+    c.height=video.videoHeight;
+    c.getContext("2d").drawImage(video,0,0);
+    stream.getTracks().forEach(t=>t.stop());
+    video.style.display=snapBtn.style.display="none";
+    register(c.toDataURL("image/jpeg",0.95));
+  };
 };
 
 async function register(url){
+  const blob=await fetch(url).then(r=>r.blob());
+  const imgId=await saveImage(blob);
   const img=new Image(); img.src=url; await img.decode();
-  load().push({
+
+  const db=loadMeta();
+  db.push({
     id:Date.now(),
+    imgId,
     serial:serial.value,
     place:place.value,
-    img:url,
     hashes:await Hasher.multi(img),
     edges:Hasher.edgeDensity(img),
     ratio:img.width/img.height
   });
-  save(load()); render(); alert("Object registered");
+  saveMeta(db);
+  render();
+  alert("Object registered");
 }
 
-/* ===== SCAN ===== */
+/* ================= SCAN ================= */
 scanBtn.onclick=()=>scan(scanFile.files[0]);
-camScanBtn.onclick=()=>startCamera(cameraSelectScan.value);
+
+camScanBtn.onclick=async()=>{
+  video.style.display=snapBtn.style.display="block";
+  stream=await navigator.mediaDevices.getUserMedia({video:true});
+  video.srcObject=stream;
+  snapBtn.onclick=async()=>{
+    const c=document.createElement("canvas");
+    c.width=video.videoWidth;
+    c.height=video.videoHeight;
+    c.getContext("2d").drawImage(video,0,0);
+    stream.getTracks().forEach(t=>t.stop());
+    video.style.display=snapBtn.style.display="none";
+    scan(await fetch(c.toDataURL()).then(r=>r.blob()));
+  };
+};
 
 async function scan(file){
   if(!file)return;
   const url=await read(file);
   const img=new Image(); img.src=url; await img.decode();
 
+  const qH=await Hasher.multi(img);
+  const qE=Hasher.edgeDensity(img);
+  const qR=img.width/img.height;
+
   let best={d:1e9,o:null};
-  for(const o of load()){
-    const d=dist(await Hasher.multi(img),o.hashes,
-      Hasher.edgeDensity(img),img.width/img.height,o.edges,o.ratio);
+  for(const o of loadMeta()){
+    const d=dist(qH,o.hashes,qE,qR,o.edges,o.ratio);
     if(d<best.d) best={d,o};
   }
 
   result.style.display="block";
-  result.innerHTML = best.o && best.d<15
-    ? `MATCH<br>Serial: ${best.o.serial}<br>Place: ${best.o.place}<br>Score: ${best.d.toFixed(1)}`
-    : " No matching object found";
+  result.innerHTML=best.o && best.d<15
+    ? ` MATCH<br>Serial: ${best.o.serial}<br>Place: ${best.o.place}<br>Score: ${best.d.toFixed(1)}`
+    : "No match found";
 }
 </script>
 </body>
 </html>
-
-
