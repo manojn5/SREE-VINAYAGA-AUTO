@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Object ID Pro — MobileNet AI</title>
+<title>SHREE-VINAYAGA-AUTO</title>
 
 <style>
 body{margin:0;padding:24px;background:#0f1724;color:#e6eef6;font-family:system-ui}
@@ -29,7 +29,7 @@ video{width:100%;border-radius:10px;margin-top:8px}
 
 <body>
 
-<h2>Object ID Pro — MobileNet AI Matching</h2>
+<h2>SHREE-VINAYAGA-AUTO</h2>
 
 <div class="container">
 
@@ -37,8 +37,8 @@ video{width:100%;border-radius:10px;margin-top:8px}
 <h3>Register Object</h3>
 <input type="file" id="addFile" accept="image/*">
 <div class="cam-row">
-  <button class="ghost" id="camAddBtn">📷 Camera</button>
-  <button class="ghost" id="switchCamBtn">🔄 Switch</button>
+  <button class="ghost" id="camAddBtn"> Camera</button>
+  <button class="ghost" id="switchCamBtn"> Switch</button>
 </div>
 <input id="serial" placeholder="Serial">
 <input id="place" placeholder="Place">
@@ -49,13 +49,13 @@ video{width:100%;border-radius:10px;margin-top:8px}
 <div class="card">
 <h3>Scan Object</h3>
 <input type="file" id="scanFile" accept="image/*">
-<button id="scanBtn">🔍 Scan Image</button>
+<button id="scanBtn"> Scan Image</button>
 <div class="cam-row">
-  <button class="ghost" id="camScanBtn">📸 Camera Scan</button>
-  <button class="ghost" id="switchCamBtn2">🔄 Switch</button>
+  <button class="ghost" id="camScanBtn"> Camera Scan</button>
+  <button class="ghost" id="switchCamBtn2"> Switch</button>
 </div>
 <video id="video" autoplay playsinline style="display:none"></video>
-<button id="snapBtn" style="display:none">📸 Capture</button>
+<button id="snapBtn" style="display:none"> Capture</button>
 <div class="result" id="result" style="display:none"></div>
 </div>
 
@@ -66,7 +66,7 @@ video{width:100%;border-radius:10px;margin-top:8px}
 let model;
 async function loadModel(){
   model = await mobilenet.load({version:2, alpha:1.0});
-  console.log("✅ MobileNet loaded");
+  console.log(" MobileNet loaded");
 }
 loadModel();
 
@@ -240,9 +240,10 @@ async function scan(file){
 
   result.style.display="block";
   result.innerHTML=best.o && best.s>0.75
-    ? `✅ MATCH<br>Serial: ${best.o.serial}<br>Place: ${best.o.place}<br>Confidence: ${(best.s*100).toFixed(1)}%`
-    : "❌ No match found";
+    ? ` MATCH<br>Serial: ${best.o.serial}<br>Place: ${best.o.place}<br>Confidence: ${(best.s*100).toFixed(1)}%`
+    : "No match found";
 }
 </script>
 </body>
 </html>
+
