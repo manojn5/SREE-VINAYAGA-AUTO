@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Object ID Pro — MobileNet AI (Fixed)</title>
+<title>Object ID Pro — MobileNet AI</title>
 
 <style>
 body{margin:0;padding:24px;background:#0f1724;color:#e6eef6;font-family:system-ui}
@@ -22,14 +22,14 @@ video{width:100%;border-radius:10px;margin-top:8px}
 @media(max-width:900px){.container{grid-template-columns:1fr}}
 </style>
 
-<!-- TensorFlow -->
+<!-- TensorFlow.js + MobileNet -->
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.18.0"></script>
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/mobilenet"></script>
 </head>
 
 <body>
 
-<h2>Object ID Pro — MobileNet AI</h2>
+<h2>Object ID Pro — MobileNet AI Matching</h2>
 
 <div class="container">
 
@@ -62,11 +62,9 @@ video{width:100%;border-radius:10px;margin-top:8px}
 </div>
 
 <script>
-/* ================= MODEL ================= */
+/* ================= AI MODEL ================= */
 let model;
 async function loadModel(){
-  await tf.setBackend('webgl');
-  await tf.ready();
   model = await mobilenet.load({version:2, alpha:1.0});
   console.log("✅ MobileNet loaded");
 }
@@ -109,25 +107,29 @@ async function loadImage(id){
 
 const loadMeta=()=>JSON.parse(localStorage.getItem(META_KEY)||"[]");
 const saveMeta=d=>localStorage.setItem(META_KEY,JSON.stringify(d));
+const read=f=>new Promise(r=>{const fr=new FileReader();fr.onload=e=>r(e.target.result);fr.readAsDataURL(f)});
 
-/* ================= AI HELPERS ================= */
-async function getEmbeddingFromCanvas(canvas){
+/* ================= IMAGE PREP ================= */
+function centerCrop(img,size=224){
   const c=document.createElement("canvas");
-  c.width=c.height=224;
-  c.getContext("2d").drawImage(canvas,0,0,224,224);
+  const s=Math.min(img.width,img.height);
+  c.width=c.height=size;
+  c.getContext("2d").drawImage(
+    img,(img.width-s)/2,(img.height-s)/2,s,s,0,0,size,size
+  );
+  return c;
+}
 
-  const t=tf.browser.fromPixels(c)
-    .toFloat()
-    .div(255)
-    .expandDims(0);
-
+async function getEmbedding(img){
+  const c=centerCrop(img);
+  const t=tf.browser.fromPixels(c).toFloat().expandDims(0);
   const e=model.infer(t,true);
   const v=await e.data();
-
   tf.dispose([t,e]);
   return Array.from(v);
 }
 
+/* ================= SIMILARITY ================= */
 function cosine(a,b){
   let dot=0,na=0,nb=0;
   for(let i=0;i<a.length;i++){
@@ -181,53 +183,39 @@ switchCamBtn.onclick=switchCamBtn2.onclick=()=>{
 
 /* ================= REGISTER ================= */
 addBtn.onclick=async()=>{
-  if(!addFile.files[0] || !model) return;
+  if(!addFile.files[0])return;
+  register(await read(addFile.files[0]));
+};
+camAddBtn.onclick=async()=>{
+  await startCamera();
+  snapBtn.onclick=async()=>{
+    const c=document.createElement("canvas");
+    c.width=video.videoWidth;
+    c.height=video.videoHeight;
+    c.getContext("2d").drawImage(video,0,0);
+    stopCamera();
+    register(c.toDataURL("image/jpeg",0.95));
+  };
+};
 
-  const img=new Image();
-  img.src=URL.createObjectURL(addFile.files[0]);
-  await img.decode();
+async function register(url){
+  if(!model){alert("Model loading… wait");return;}
+  const blob=await fetch(url).then(r=>r.blob());
+  const imgId=await saveImage(blob);
 
-  const c=document.createElement("canvas");
-  c.width=img.width; c.height=img.height;
-  c.getContext("2d").drawImage(img,0,0);
-
-  const embedding=await getEmbeddingFromCanvas(c);
-  const imgId=await saveImage(addFile.files[0]);
+  const img=new Image(); img.src=url; await img.decode();
+  const embedding=await getEmbedding(img);
 
   const db=loadMeta();
   db.push({id:Date.now(),imgId,serial:serial.value,place:place.value,embedding});
   saveMeta(db);
   render();
-  alert("✅ Registered (Upload)");
-};
-
-camAddBtn.onclick=async()=>{
-  if(!model) return alert("Model loading...");
-  await startCamera();
-  snapBtn.onclick=async()=>{
-    const c=document.createElement("canvas");
-    c.width=video.videoWidth;
-    c.height=video.videoHeight;
-    c.getContext("2d").drawImage(video,0,0);
-    stopCamera();
-
-    const blob=await new Promise(r=>c.toBlob(r,"image/jpeg",0.95));
-    const imgId=await saveImage(blob);
-    const embedding=await getEmbeddingFromCanvas(c);
-
-    const db=loadMeta();
-    db.push({id:Date.now(),imgId,serial:serial.value,place:place.value,embedding});
-    saveMeta(db);
-    render();
-    alert("✅ Registered (Camera)");
-  };
-};
+  alert("Object registered (AI)");
+}
 
 /* ================= SCAN ================= */
 scanBtn.onclick=()=>scan(scanFile.files[0]);
-
 camScanBtn.onclick=async()=>{
-  if(!model) return alert("Model loading...");
   await startCamera();
   snapBtn.onclick=async()=>{
     const c=document.createElement("canvas");
@@ -235,21 +223,14 @@ camScanBtn.onclick=async()=>{
     c.height=video.videoHeight;
     c.getContext("2d").drawImage(video,0,0);
     stopCamera();
-    scan(await new Promise(r=>c.toBlob(r)));
+    scan(await fetch(c.toDataURL()).then(r=>r.blob()));
   };
 };
 
 async function scan(file){
-  if(!file) return;
-  const img=new Image();
-  img.src=URL.createObjectURL(file);
-  await img.decode();
-
-  const c=document.createElement("canvas");
-  c.width=img.width; c.height=img.height;
-  c.getContext("2d").drawImage(img,0,0);
-
-  const q=await getEmbeddingFromCanvas(c);
+  if(!model)return;
+  const img=new Image(); img.src=await read(file); await img.decode();
+  const q=await getEmbedding(img);
 
   let best={s:-1,o:null};
   for(const o of loadMeta()){
