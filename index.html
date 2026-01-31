@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Object ID Pro </title>
+<title>Object ID Pro — MobileNet AI (Fixed)</title>
 
 <style>
 body{margin:0;padding:24px;background:#0f1724;color:#e6eef6;font-family:system-ui}
@@ -13,191 +13,136 @@ input,button{width:100%;padding:10px;margin-top:6px;border-radius:8px;border:non
 button{background:#06b6d4;font-weight:700;cursor:pointer}
 button.ghost{background:transparent;color:#94a3b8;border:1px solid #1e293b}
 .list{margin-top:10px;display:grid;gap:8px}
-.item{
-  display:flex;
-  gap:8px;
-  background:#111827;
-  padding:6px;
-  border-radius:8px;
-  align-items:center
-}
+.item{display:flex;gap:8px;background:#111827;padding:6px;border-radius:8px;align-items:center}
 .item img{width:60px;height:45px;object-fit:cover;border-radius:6px}
-.del{
-  margin-left:auto;
-  background:#7f1d1d;
-  color:#fff;
-  border-radius:6px;
-  padding:4px 8px;
-  cursor:pointer
-}
+.del{margin-left:auto;background:#7f1d1d;color:#fff;padding:4px 8px;border-radius:6px;cursor:pointer}
 video{width:100%;border-radius:10px;margin-top:8px}
 .result{margin-top:10px;padding:10px;border-radius:10px;background:#022c22}
 .cam-row{display:flex;gap:6px}
 @media(max-width:900px){.container{grid-template-columns:1fr}}
 </style>
+
+<!-- TensorFlow -->
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.18.0"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/mobilenet"></script>
 </head>
 
 <body>
 
-<h2>SREE-VINAYAGA-AUTO</h2>
+<h2>Object ID Pro — MobileNet AI</h2>
 
 <div class="container">
 
-<!-- REGISTER -->
 <div class="card">
 <h3>Register Object</h3>
-
 <input type="file" id="addFile" accept="image/*">
-
 <div class="cam-row">
-  <button class="ghost" id="camAddBtn"> Camera</button>
-  <button class="ghost" id="switchCamBtn">Switch</button>
+  <button class="ghost" id="camAddBtn">📷 Camera</button>
+  <button class="ghost" id="switchCamBtn">🔄 Switch</button>
 </div>
-
 <input id="serial" placeholder="Serial">
 <input id="place" placeholder="Place">
-
 <button id="addBtn">Register</button>
-
 <div class="list" id="list"></div>
 </div>
 
-<!-- SCAN -->
 <div class="card">
 <h3>Scan Object</h3>
-
 <input type="file" id="scanFile" accept="image/*">
-<button id="scanBtn">Scan Image</button>
-
+<button id="scanBtn">🔍 Scan Image</button>
 <div class="cam-row">
-  <button class="ghost" id="camScanBtn"> Camera Scan</button>
-  <button class="ghost" id="switchCamBtn2"> Switch</button>
+  <button class="ghost" id="camScanBtn">📸 Camera Scan</button>
+  <button class="ghost" id="switchCamBtn2">🔄 Switch</button>
 </div>
-
 <video id="video" autoplay playsinline style="display:none"></video>
-<button id="snapBtn" style="display:none">Capture</button>
-
+<button id="snapBtn" style="display:none">📸 Capture</button>
 <div class="result" id="result" style="display:none"></div>
 </div>
 
 </div>
 
 <script>
-/* ================= DATABASE ================= */
-const META_KEY="object-meta-v1";
+/* ================= MODEL ================= */
+let model;
+async function loadModel(){
+  await tf.setBackend('webgl');
+  await tf.ready();
+  model = await mobilenet.load({version:2, alpha:1.0});
+  console.log("✅ MobileNet loaded");
+}
+loadModel();
+
+/* ================= STORAGE ================= */
+const META_KEY="object-meta-ai";
 const DB_NAME="ObjectIDFiles";
 const STORE="images";
-let stream;
-let facingMode="environment"; // back camera default
+let stream, facingMode="environment";
+
+if(navigator.storage?.persist) navigator.storage.persist();
 
 function openDB(){
   return new Promise(res=>{
-    const req=indexedDB.open(DB_NAME,1);
-    req.onupgradeneeded=e=>e.target.result.createObjectStore(STORE,{keyPath:"id"});
-    req.onsuccess=()=>res(req.result);
+    const r=indexedDB.open(DB_NAME,1);
+    r.onupgradeneeded=e=>e.target.result.createObjectStore(STORE,{keyPath:"id"});
+    r.onsuccess=()=>res(r.result);
   });
 }
 
 async function saveImage(blob){
   const db=await openDB();
   const id=Date.now()+Math.random();
-  const tx=db.transaction(STORE,"readwrite");
-  tx.objectStore(STORE).put({id,blob});
+  db.transaction(STORE,"readwrite").objectStore(STORE).put({id,blob});
   return id;
 }
-
 async function deleteImage(id){
   const db=await openDB();
-  const tx=db.transaction(STORE,"readwrite");
-  tx.objectStore(STORE).delete(id);
+  db.transaction(STORE,"readwrite").objectStore(STORE).delete(id);
 }
-
 async function loadImage(id){
   const db=await openDB();
-  return new Promise(res=>{
-    db.transaction(STORE)
-      .objectStore(STORE)
-      .get(id).onsuccess=e=>{
-        res(URL.createObjectURL(e.target.result.blob));
-      };
+  return new Promise(r=>{
+    db.transaction(STORE).objectStore(STORE).get(id).onsuccess=e=>{
+      r(URL.createObjectURL(e.target.result.blob));
+    };
   });
 }
 
 const loadMeta=()=>JSON.parse(localStorage.getItem(META_KEY)||"[]");
 const saveMeta=d=>localStorage.setItem(META_KEY,JSON.stringify(d));
 
-const read=f=>new Promise(r=>{
-  const fr=new FileReader();
-  fr.onload=e=>r(e.target.result);
-  fr.readAsDataURL(f);
-});
+/* ================= AI HELPERS ================= */
+async function getEmbeddingFromCanvas(canvas){
+  const c=document.createElement("canvas");
+  c.width=c.height=224;
+  c.getContext("2d").drawImage(canvas,0,0,224,224);
 
-/* ================= HASH ENGINE ================= */
-class Hasher{
-  static async multi(img){
-    const sizes=[32,48,64],out=[];
-    for(const s of sizes)
-      out.push({hash:this.hash(img,s),color:this.color(img,s)});
-    return out;
-  }
-  static hash(img,size){
-    const c=document.createElement("canvas");
-    c.width=c.height=size;
-    const x=c.getContext("2d");
-    x.drawImage(img,0,0,size,size);
-    const d=x.getImageData(0,0,size,size).data;
-    let g=[];
-    for(let i=0;i<d.length;i+=4)
-      g.push((d[i]+d[i+1]+d[i+2])/3);
-    let bits=[];
-    for(let y=0;y<size;y++)
-      for(let x1=0;x1<size-1;x1++)
-        bits.push(g[y*size+x1]>g[y*size+x1+1]?1:0);
-    return bits.slice(0,64).join("");
-  }
-  static color(img,size){
-    const c=document.createElement("canvas");
-    c.width=c.height=size;
-    const x=c.getContext("2d");
-    x.drawImage(img,0,0,size,size);
-    const d=x.getImageData(0,0,size,size).data;
-    let r=0,g=0,b=0;
-    for(let i=0;i<d.length;i+=4){r+=d[i];g+=d[i+1];b+=d[i+2]}
-    return[r/(size*size),g/(size*size),b/(size*size)];
-  }
-  static edgeDensity(img){
-    const s=64,c=document.createElement("canvas");
-    c.width=c.height=s;
-    const x=c.getContext("2d");
-    x.drawImage(img,0,0,s,s);
-    const d=x.getImageData(0,0,s,s).data;
-    let e=0;
-    for(let i=0;i<d.length;i+=4){
-      const g=(d[i]+d[i+1]+d[i+2])/3;
-      if(g<60||g>200) e++;
-    }
-    return e/(s*s);
-  }
+  const t=tf.browser.fromPixels(c)
+    .toFloat()
+    .div(255)
+    .expandDims(0);
+
+  const e=model.infer(t,true);
+  const v=await e.data();
+
+  tf.dispose([t,e]);
+  return Array.from(v);
 }
 
-function dist(q,s,qe,qr,se,sr){
-  let sum=0;
-  for(let i=0;i<q.length;i++){
-    let h=0;
-    for(let b=0;b<64;b++) if(q[i].hash[b]!==s[i].hash[b]) h++;
-    const c=Math.abs(q[i].color[0]-s[i].color[0])+
-            Math.abs(q[i].color[1]-s[i].color[1])+
-            Math.abs(q[i].color[2]-s[i].color[2]);
-    sum+=h+c*0.06;
+function cosine(a,b){
+  let dot=0,na=0,nb=0;
+  for(let i=0;i<a.length;i++){
+    dot+=a[i]*b[i];
+    na+=a[i]*a[i];
+    nb+=b[i]*b[i];
   }
-  return sum/q.length + Math.abs(qe-se)*40 + Math.abs(qr-sr)*10;
+  return dot/(Math.sqrt(na)*Math.sqrt(nb));
 }
 
 /* ================= UI ================= */
 const list=document.getElementById("list");
-const result=document.getElementById("result");
 const video=document.getElementById("video");
 const snapBtn=document.getElementById("snapBtn");
+const result=document.getElementById("result");
 
 async function render(){
   list.innerHTML="";
@@ -206,17 +151,13 @@ async function render(){
     list.innerHTML+=`
       <div class="item">
         <img src="${src}">
-        <div>
-          <b>${o.serial}</b><br>
-          <small>${o.place}</small>
-        </div>
+        <div><b>${o.serial}</b><br><small>${o.place}</small></div>
         <div class="del" onclick="removeItem(${o.id},${o.imgId})">🗑️</div>
       </div>`;
   }
 }
-
 async function removeItem(id,imgId){
-  if(!confirm("Delete this object?")) return;
+  if(!confirm("Delete object?")) return;
   await deleteImage(imgId);
   saveMeta(loadMeta().filter(o=>o.id!==id));
   render();
@@ -226,29 +167,42 @@ render();
 /* ================= CAMERA ================= */
 async function startCamera(){
   video.style.display=snapBtn.style.display="block";
-  stream=await navigator.mediaDevices.getUserMedia({
-    video:{facingMode}
-  });
+  stream=await navigator.mediaDevices.getUserMedia({video:{facingMode}});
   video.srcObject=stream;
 }
-
 function stopCamera(){
-  if(stream) stream.getTracks().forEach(t=>t.stop());
+  stream?.getTracks().forEach(t=>t.stop());
   video.style.display=snapBtn.style.display="none";
 }
-
 switchCamBtn.onclick=switchCamBtn2.onclick=()=>{
   facingMode=facingMode==="user"?"environment":"user";
-  if(stream){ stopCamera(); startCamera(); }
+  if(stream){stopCamera();startCamera();}
 };
 
 /* ================= REGISTER ================= */
 addBtn.onclick=async()=>{
-  if(!addFile.files[0])return;
-  register(await read(addFile.files[0]));
+  if(!addFile.files[0] || !model) return;
+
+  const img=new Image();
+  img.src=URL.createObjectURL(addFile.files[0]);
+  await img.decode();
+
+  const c=document.createElement("canvas");
+  c.width=img.width; c.height=img.height;
+  c.getContext("2d").drawImage(img,0,0);
+
+  const embedding=await getEmbeddingFromCanvas(c);
+  const imgId=await saveImage(addFile.files[0]);
+
+  const db=loadMeta();
+  db.push({id:Date.now(),imgId,serial:serial.value,place:place.value,embedding});
+  saveMeta(db);
+  render();
+  alert("✅ Registered (Upload)");
 };
 
 camAddBtn.onclick=async()=>{
+  if(!model) return alert("Model loading...");
   await startCamera();
   snapBtn.onclick=async()=>{
     const c=document.createElement("canvas");
@@ -256,34 +210,24 @@ camAddBtn.onclick=async()=>{
     c.height=video.videoHeight;
     c.getContext("2d").drawImage(video,0,0);
     stopCamera();
-    register(c.toDataURL("image/jpeg",0.95));
+
+    const blob=await new Promise(r=>c.toBlob(r,"image/jpeg",0.95));
+    const imgId=await saveImage(blob);
+    const embedding=await getEmbeddingFromCanvas(c);
+
+    const db=loadMeta();
+    db.push({id:Date.now(),imgId,serial:serial.value,place:place.value,embedding});
+    saveMeta(db);
+    render();
+    alert("✅ Registered (Camera)");
   };
 };
-
-async function register(url){
-  const blob=await fetch(url).then(r=>r.blob());
-  const imgId=await saveImage(blob);
-  const img=new Image(); img.src=url; await img.decode();
-
-  const db=loadMeta();
-  db.push({
-    id:Date.now(),
-    imgId,
-    serial:serial.value,
-    place:place.value,
-    hashes:await Hasher.multi(img),
-    edges:Hasher.edgeDensity(img),
-    ratio:img.width/img.height
-  });
-  saveMeta(db);
-  render();
-  alert("Object registered");
-}
 
 /* ================= SCAN ================= */
 scanBtn.onclick=()=>scan(scanFile.files[0]);
 
 camScanBtn.onclick=async()=>{
+  if(!model) return alert("Model loading...");
   await startCamera();
   snapBtn.onclick=async()=>{
     const c=document.createElement("canvas");
@@ -291,29 +235,32 @@ camScanBtn.onclick=async()=>{
     c.height=video.videoHeight;
     c.getContext("2d").drawImage(video,0,0);
     stopCamera();
-    scan(await fetch(c.toDataURL()).then(r=>r.blob()));
+    scan(await new Promise(r=>c.toBlob(r)));
   };
 };
 
 async function scan(file){
-  if(!file)return;
-  const url=await read(file);
-  const img=new Image(); img.src=url; await img.decode();
+  if(!file) return;
+  const img=new Image();
+  img.src=URL.createObjectURL(file);
+  await img.decode();
 
-  const qH=await Hasher.multi(img);
-  const qE=Hasher.edgeDensity(img);
-  const qR=img.width/img.height;
+  const c=document.createElement("canvas");
+  c.width=img.width; c.height=img.height;
+  c.getContext("2d").drawImage(img,0,0);
 
-  let best={d:1e9,o:null};
+  const q=await getEmbeddingFromCanvas(c);
+
+  let best={s:-1,o:null};
   for(const o of loadMeta()){
-    const d=dist(qH,o.hashes,qE,qR,o.edges,o.ratio);
-    if(d<best.d) best={d,o};
+    const s=cosine(q,o.embedding);
+    if(s>best.s) best={s,o};
   }
 
   result.style.display="block";
-  result.innerHTML=best.o && best.d<15
-    ? ` MATCH<br>Serial: ${best.o.serial}<br>Place: ${best.o.place}<br>Score: ${best.d.toFixed(1)}`
-    : " No match found";
+  result.innerHTML=best.o && best.s>0.75
+    ? `✅ MATCH<br>Serial: ${best.o.serial}<br>Place: ${best.o.place}<br>Confidence: ${(best.s*100).toFixed(1)}%`
+    : "❌ No match found";
 }
 </script>
 </body>
